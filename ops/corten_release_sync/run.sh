@@ -11,6 +11,7 @@ test -r "$SYNC_ROOT/release-sync-config/build-settings.json"
 
 exec docker run --rm --init \
   --name corten-release-sync \
+  --user "$(id -u):$(id -g)" \
   --memory 2g --cpus 1.5 --pids-limit 200 --shm-size 1g \
   --cap-drop ALL --security-opt no-new-privileges:true \
   --mount "type=bind,src=$SYNC_ROOT/rdgen-auth/ops/corten_release_sync,dst=/app,readonly" \

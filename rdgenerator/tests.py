@@ -1,4 +1,8 @@
 import os
+import subprocess
+import sys
+from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest.mock import patch
 
 from django.http import HttpResponse
@@ -66,3 +70,26 @@ class BearerTokenMiddlewareTests(SimpleTestCase):
             response = self.middleware(self.factory.get("/static-private/page"))
 
         self.assertEqual(response.status_code, 401)
+
+
+class DatabasePathConfigurationTests(SimpleTestCase):
+    def test_database_path_can_be_moved_to_persistent_storage(self):
+        with TemporaryDirectory() as temp_dir:
+            expected = str(Path(temp_dir) / "rdgen.sqlite3")
+            child_env = os.environ.copy()
+            child_env["RDGEN_DATABASE_PATH"] = expected
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    "-c",
+                    "from django.conf import settings; "
+                    "print(settings.DATABASES['default']['NAME'])",
+                ],
+                cwd=Path(__file__).resolve().parents[1],
+                env=child_env,
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.stdout.strip(), expected)

@@ -5,7 +5,7 @@ USER user
 
 WORKDIR /opt/rdgen
 
-COPY . .
+COPY --chown=user:user . .
 RUN pip install --no-cache-dir -r requirements.txt \
  && python manage.py migrate
 

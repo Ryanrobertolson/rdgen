@@ -44,6 +44,7 @@ env:
 jobs:
   setup:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
+    secrets: inherit
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
@@ -105,7 +106,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Export GitHub Actions cache environment variables
@@ -444,7 +445,7 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            Invoke-WebRequest -Uri ${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }} -OutFile ./res/iconx.png 
+            Invoke-WebRequest -Uri ${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }} -MaximumRedirection 0 -Headers @{ Authorization = "Bearer ${{ secrets.RDGEN_API_TOKEN }}" } -OutFile ./res/iconx.png
             mv ./res/icon.ico ./res/icon.ico.bak
             mv ./res/icon.png ./res/icon.png.bak
             mv ./res/tray-icon.ico ./res/tray-icon.ico.bak
@@ -608,7 +609,7 @@ jobs:
           shell: pwsh
           continue_on_error: true
           command: |
-            Invoke-WebRequest -Uri ${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }} -OutFile ./rustdesk/data/flutter_assets/assets/logo.png
+            Invoke-WebRequest -Uri ${{ secrets.GENURL }}/get_png?filename=${{ env.logolink_file }}"&"uuid=${{ env.logolink_uuid }} -MaximumRedirection 0 -Headers @{ Authorization = "Bearer ${{ secrets.RDGEN_API_TOKEN }}" } -OutFile ./rustdesk/data/flutter_assets/assets/logo.png
 
       - name: find Runner.res
         # Windows: find Runner.res (compiled from ./flutter/windows/runner/Runner.rc), copy to ./Runner.res
@@ -742,8 +743,8 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client || true
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" -F "file=@./SignOutput/${{ env.filename }}.msi" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client || true
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
@@ -754,8 +755,8 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client || true
+            curl -i -X POST -H "Content-Type: multipart/form-data" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
+            curl -i -X POST -H "Content-Type: multipart/form-data" -F "file=@./SignOutput/${{ env.filename }}.msi" ${{ env.apiServer }}/api/save_custom_client || true
 
   cleanup:
     needs: [build-for-windows-flutter]

@@ -42,6 +42,7 @@ env:
 jobs:
   setup:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
+    secrets: inherit
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
@@ -96,7 +97,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Export GitHub Actions cache environment variables
@@ -331,10 +332,11 @@ jobs:
           mkdir -p ./rustdesk/data/flutter_assets/assets
 
           # Download icon using curl with additional SSL options
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
+          curl -k -L --max-redirs 0 --tlsv1.2 --proto =https --ssl-reqd \
             -H "User-Agent: Mozilla/5.0" \
-            "${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}" \
-            -o ./res/icon.png || wget --no-check-certificate -O ./res/icon.png "${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}"
+            -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" \
+            "${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}" \
+            -o ./res/icon.png || wget --max-redirect=0 --header="Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" --no-check-certificate -O ./res/icon.png "${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}"
             
           # Backup existing files (if they exist)
           [ -f "./res/32x32.png" ] && mv ./res/32x32.png ./res/32x32.png.bak
@@ -605,13 +607,14 @@ jobs:
         run: |
           ASSETS_DIR="build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
           mkdir -p "$ASSETS_DIR"
-          curl -k -L --tlsv1.2 --proto =https --ssl-reqd \
+          curl -k -L --max-redirs 0 --tlsv1.2 --proto =https --ssl-reqd \
             -H "User-Agent: Mozilla/5.0" \
-            "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}" \
+            -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" \
+            "${{ secrets.GENURL }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}" \
             -o "$ASSETS_DIR/logo.png" || \
           wget --no-check-certificate \
             -O "$ASSETS_DIR/logo.png" \
-            "${{ env.logolink_url }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
+            "${{ secrets.GENURL }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
 
       - name: Sign macOS app bundle
         if: env.MACOS_P12_BASE64 != ''
@@ -750,7 +753,7 @@ jobs:
         run: |
           curl -i -X POST \
             -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer ${{ env.token }}" \
+            -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" \
             -F "file=@$GITHUB_WORKSPACE/${{ env.filename }}-${{ matrix.job.arch }}.dmg" \
             -F "uuid=${{ env.uuid }}" \
             "${{ secrets.GENURL }}/save_custom_client"
@@ -762,7 +765,7 @@ jobs:
         run: |
           curl -i -X POST \
             -H "Content-Type: multipart/form-data" \
-            -H "Authorization: Bearer ${{ env.token }}" \
+            \
             -F "file=@$GITHUB_WORKSPACE/${{ env.filename }}-${{ matrix.job.arch }}.dmg" \
             "${{ env.apiServer }}/api/save_custom_client"
 

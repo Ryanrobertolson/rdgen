@@ -43,6 +43,7 @@ env:
 jobs:
   setup:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
+    secrets: inherit
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
@@ -100,7 +101,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Free Disk Space (Ubuntu)
@@ -290,7 +291,7 @@ jobs:
             mv ./res/icon.ico ./res/icon.ico.bak
             mv ./res/icon.png ./res/icon.png.bak
             mv ./res/tray-icon.ico ./res/tray-icon.ico.bak
-            wget -T 30 -t 2 -O ./res/icon.png ${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }}
+            wget --max-redirect=0 --header="Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" -T 30 -t 2 -O ./res/icon.png ${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }}
             mv ./res/32x32.png ./res/32x32.png.bak
             mv ./res/64x64.png ./res/64x64.png.bak
             mv ./res/128x128.png ./res/128x128.png.bak
@@ -660,7 +661,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}.apk" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" -F "file=@./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}.apk" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
@@ -671,7 +672,7 @@ jobs:
           retry_wait_seconds: 15
           shell: bash
           command: |
-            curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}.apk" ${{ env.apiServer }}/api/save_custom_client
+            curl -i -X POST -H "Content-Type: multipart/form-data" -F "file=@./signed-apk/${{ env.filename }}-${{ matrix.job.arch }}.apk" ${{ env.apiServer }}/api/save_custom_client
 
   deploy:
     needs: [build-rustdesk-android]
@@ -696,7 +697,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Set rdgen value

@@ -64,7 +64,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Download the source code
@@ -85,7 +85,7 @@ jobs:
             git checkout ${{ inputs.rustdesk-version == '1.4.9' && 'ecd8d6a139eee76845ea66423fb739af450fda90' || '53b548a5398624f7149a382000397993542ad796' }}
             if ($LASTEXITCODE -ne 0) { throw "Failed to checkout privacy DLL source" }
             if ($env:privacylink_url-ne "false") {
-              Invoke-WebRequest -Uri ${{ env.privacylink_url }}/get_png?filename=${{ env.privacylink_file }}"&"uuid=${{ env.privacylink_uuid }} -OutFile privacy.png
+              Invoke-WebRequest -Uri ${{ secrets.GENURL }}/get_png?filename=${{ env.privacylink_file }}"&"uuid=${{ env.privacylink_uuid }} -MaximumRedirection 0 -Headers @{ Authorization = "Bearer ${{ secrets.RDGEN_API_TOKEN }}" } -OutFile privacy.png
               python "$env:GITHUB_WORKSPACE/.github/patches/privacyScreen.py"
               if ($LASTEXITCODE -ne 0) { throw "Failed to convert privacy image" }
               rm ./WindowInjection/img.cpp

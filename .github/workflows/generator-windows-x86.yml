@@ -48,6 +48,7 @@ env:
 jobs:
   setup:
     uses: ./.github/workflows/fetch-encrypted-secrets.yml
+    secrets: inherit
     with:
       zip_url_json: ${{ inputs.zip_url }}
 
@@ -90,7 +91,7 @@ jobs:
         with:
           url: "${{ secrets.GENURL }}/cleanzip"
           method: 'POST'
-          customHeaders: '{"Content-Type": "application/json"}'
+          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
           data: '{"uuid": "${{ env.uuid }}"}'
 
       - name: Export GitHub Actions cache environment variables
@@ -333,7 +334,7 @@ jobs:
           retry_wait_seconds: 15
           shell: pwsh
           command: |
-            Invoke-WebRequest -Uri ${{ env.iconlink_url }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }} -OutFile ./res/icon.png 
+            Invoke-WebRequest -Uri ${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}"&"uuid=${{ env.iconlink_uuid }} -MaximumRedirection 0 -Headers @{ Authorization = "Bearer ${{ secrets.RDGEN_API_TOKEN }}" } -OutFile ./res/icon.png
             mv ./res/32x32.png ./res/32x32.png.bak
             mv ./res/64x64.png ./res/64x64.png.bak
             mv ./res/128x128.png ./res/128x128.png.bak
@@ -537,13 +538,13 @@ jobs:
         if: ${{ env.rdgen == 'true' }}
         shell: bash
         run: |
-          curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
+          curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" -F "file=@./SignOutput/${{ env.filename }}.exe" -F "uuid=${{ env.uuid }}" ${{ secrets.GENURL }}/save_custom_client
 
       - name: send file to api server
         if: ${{ env.rdgen == 'false' }}
         shell: bash
         run: |
-          curl -i -X POST -H "Content-Type: multipart/form-data" -H "Authorization: Bearer ${{ env.token }}" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
+          curl -i -X POST -H "Content-Type: multipart/form-data" -F "file=@./SignOutput/${{ env.filename }}.exe" ${{ env.apiServer }}/api/save_custom_client
 
   cleanup:
     needs: [build-for-windows-sciter]

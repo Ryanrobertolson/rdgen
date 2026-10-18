@@ -19,4 +19,4 @@ exec docker run --rm --init \
   --mount "type=bind,src=$SYNC_ROOT/release-sync-state,dst=/state" \
   --mount "type=bind,src=$CREDENTIALS_DIRECTORY/corten-auth,dst=/run/secrets/corten-auth,readonly" \
   --mount "type=bind,src=$CREDENTIALS_DIRECTORY/rdgen-auth,dst=/run/secrets/rdgen-auth,readonly" \
-  "$IMAGE"
+  "$IMAGE" "$@"

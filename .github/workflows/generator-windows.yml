@@ -425,6 +425,36 @@ jobs:
           vcpkgGitCommitId: ${{ env.VCPKG_COMMIT_ID }}
           doNotCache: false
 
+      - name: Install NASM 2.16.03 for AOM
+        shell: pwsh
+        run: |
+          $version = '2.16.03'
+          $archive = Join-Path $env:RUNNER_TEMP "nasm-$version-win64.zip"
+          $installDir = Join-Path $env:RUNNER_TEMP "nasm-$version"
+          $ProgressPreference = 'SilentlyContinue'
+          Invoke-WebRequest `
+            -Uri "https://www.nasm.us/pub/nasm/releasebuilds/$version/win64/nasm-$version-win64.zip" `
+            -OutFile $archive
+          Expand-Archive -LiteralPath $archive -DestinationPath $installDir
+          $nasm = Get-ChildItem -LiteralPath $installDir -Filter nasm.exe -Recurse |
+            Select-Object -First 1
+          if ($null -eq $nasm) { throw "NASM $version archive did not contain nasm.exe" }
+          Add-Content -Path $env:GITHUB_PATH -Value $nasm.DirectoryName
+          & $nasm.FullName --version
+          $help = & $nasm.FullName -hf 2>&1
+          if ($LASTEXITCODE -ne 0 -or ($help -join "`n") -notmatch '(?m)^\s*-Ox\b') {
+            throw "NASM $version does not expose the AOM-required -Ox option"
+          }
+
+      - name: Verify NASM selected for vcpkg
+        shell: pwsh
+        run: |
+          $resolved = (Get-Command nasm.exe -ErrorAction Stop).Source
+          Write-Host "vcpkg will find NASM at $resolved"
+          if ($resolved -notlike "$env:RUNNER_TEMP\nasm-2.16.03\*") {
+            throw "Expected NASM 2.16.03 first on PATH, found $resolved"
+          }
+
       - name: Install vcpkg dependencies
         env:
           VCPKG_DEFAULT_HOST_TRIPLET: ${{ matrix.job.vcpkg-triplet }}

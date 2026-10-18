@@ -730,6 +730,7 @@ jobs:
     needs: [generate-bridge-linux, setup]
     name: build rustdesk linux drm x86_64
     runs-on: ubuntu-22.04
+    if: ${{ inputs.version == 'master' }}
     # Only rustdesk's master branch carries the drm/libdrmtap support this job
     # drives: build.py at tag 1.4.9 has neither build_libdrmtap_so nor
     # assert_staged_binary_is_drm, so a versioned build dies at

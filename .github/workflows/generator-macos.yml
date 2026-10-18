@@ -332,6 +332,11 @@ jobs:
         if: ${{ env.iconlink_url != 'false' }}
         continue-on-error: false
         shell: bash
+        env:
+          RDGEN_BASE_URL: ${{ secrets.GENURL }}
+          RDGEN_API_TOKEN: ${{ secrets.RDGEN_API_TOKEN }}
+          ASSET_FILENAME: ${{ env.iconlink_file }}
+          ASSET_UUID: ${{ env.iconlink_uuid }}
         run: |
           # Create all necessary directories first
           mkdir -p ./res
@@ -340,12 +345,10 @@ jobs:
           mkdir -p ./macos/Runner/Assets.xcassets/AppIcon.appiconset
           mkdir -p ./rustdesk/data/flutter_assets/assets
 
-          # Download icon using curl with additional SSL options
-          curl -k -L --max-redirs 0 --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" \
-            "${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}" \
-            -o ./res/icon.png || wget --max-redirect=0 --header="Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" --no-check-certificate -O ./res/icon.png "${{ secrets.GENURL }}/get_png?filename=${{ env.iconlink_file }}&uuid=${{ env.iconlink_uuid }}"
+          python3 .github/scripts/download_rdgen_asset.py \
+            --filename "$ASSET_FILENAME" \
+            --uuid "$ASSET_UUID" \
+            --output ./res/icon.png
             
           # Backup existing files (if they exist)
           [ -f "./res/32x32.png" ] && mv ./res/32x32.png ./res/32x32.png.bak
@@ -613,17 +616,18 @@ jobs:
         if: ${{ env.logolink_url != 'false' }}
         continue-on-error: false
         shell: bash
+        env:
+          RDGEN_BASE_URL: ${{ secrets.GENURL }}
+          RDGEN_API_TOKEN: ${{ secrets.RDGEN_API_TOKEN }}
+          ASSET_FILENAME: ${{ env.logolink_file }}
+          ASSET_UUID: ${{ env.logolink_uuid }}
         run: |
           ASSETS_DIR="build/macos/Build/Products/Release/RustDesk.app/Contents/Frameworks/App.framework/Versions/Current/Resources/flutter_assets/assets"
           mkdir -p "$ASSETS_DIR"
-          curl -k -L --max-redirs 0 --tlsv1.2 --proto =https --ssl-reqd \
-            -H "User-Agent: Mozilla/5.0" \
-            -H "Authorization: Bearer ${{ secrets.RDGEN_API_TOKEN }}" \
-            "${{ secrets.GENURL }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}" \
-            -o "$ASSETS_DIR/logo.png" || \
-          wget --no-check-certificate \
-            -O "$ASSETS_DIR/logo.png" \
-            "${{ secrets.GENURL }}/get_png?filename=${{ env.logolink_file }}&uuid=${{ env.logolink_uuid }}"
+          python3 .github/scripts/download_rdgen_asset.py \
+            --filename "$ASSET_FILENAME" \
+            --uuid "$ASSET_UUID" \
+            --output "$ASSETS_DIR/logo.png"
 
       - name: Sign macOS app bundle
         if: env.MACOS_P12_BASE64 != ''

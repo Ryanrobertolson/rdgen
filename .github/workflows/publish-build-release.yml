@@ -1,0 +1,126 @@
+name: Publish generated installer release
+
+on:
+  workflow_dispatch:
+    inputs:
+      uuid:
+        description: RDGen build UUID
+        required: true
+        type: string
+      version:
+        description: RustDesk release tag
+        required: true
+        type: string
+      platform:
+        description: Build platform
+        required: true
+        type: choice
+        options:
+          - windows
+          - windows-x86
+          - linux
+          - macos
+          - android
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+      RDGEN_URL: ${{ secrets.GENURL }}
+      RDGEN_API_TOKEN: ${{ secrets.RDGEN_API_TOKEN }}
+      BUILD_UUID: ${{ inputs.uuid }}
+      RUSTDESK_VERSION: ${{ inputs.version }}
+      BUILD_PLATFORM: ${{ inputs.platform }}
+      GH_REPO: ${{ github.repository }}
+      GH_SHA: ${{ github.sha }}
+    steps:
+      - name: Download RDGen outputs and write a checksummed manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import hashlib
+          import json
+          import os
+          import pathlib
+          import re
+          import urllib.parse
+          import urllib.request
+
+          uuid = os.environ["BUILD_UUID"]
+          version = os.environ["RUSTDESK_VERSION"]
+          platform = os.environ["BUILD_PLATFORM"]
+          if not re.fullmatch(r"[0-9a-fA-F-]{36}", uuid):
+              raise SystemExit("Invalid RDGen UUID")
+          if not re.fullmatch(r"v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?", version):
+              raise SystemExit("Invalid RustDesk version tag")
+          if platform not in {"windows", "windows-x86", "linux", "macos", "android"}:
+              raise SystemExit("Unsupported build platform")
+
+          base = os.environ["RDGEN_URL"].rstrip("/")
+          token = os.environ["RDGEN_API_TOKEN"]
+          headers = {"Authorization": f"Bearer {token}", "User-Agent": "corten-release-publisher"}
+
+          def get(url):
+              req = urllib.request.Request(url, headers=headers)
+              with urllib.request.urlopen(req, timeout=120) as response:
+                  return response.read()
+
+          status = json.loads(get(f"{base}/api/status?uuid={urllib.parse.quote(uuid)}"))
+          filenames = status.get("files", [])
+          if not filenames:
+              raise SystemExit(f"RDGen build {uuid} has no output files")
+
+          out = pathlib.Path("release-assets")
+          out.mkdir(exist_ok=True)
+          assets = []
+          for filename in filenames:
+              if (not isinstance(filename, str)
+                      or pathlib.Path(filename).name != filename
+                      or filename in {"", ".", "..", "manifest.json", "release-notes.md", "tag.txt"}):
+                  raise SystemExit("RDGen returned an unsafe output filename")
+              url = f"{base}/download?uuid={urllib.parse.quote(uuid)}&filename={urllib.parse.quote(filename)}"
+              data = get(url)
+              if not data:
+                  raise SystemExit(f"RDGen returned an empty file: {filename}")
+              (out / filename).write_bytes(data)
+              assets.append({"name": filename, "sha256": hashlib.sha256(data).hexdigest(), "size": len(data)})
+
+          manifest = {
+              "schema": 1,
+              "rustdesk_version": version,
+              "platform": platform,
+              "build_uuid": uuid,
+              "build_status": status.get("status", "unknown"),
+              "files": assets,
+          }
+          (out / "manifest.json").write_text(json.dumps(manifest, indent=2) + "\n")
+          pathlib.Path("release-notes.md").write_text(
+              f"CortenDesk custom RustDesk {version} build for {platform}.\n\n"
+              f"RDGen build UUID: `{uuid}`.\n"
+              f"Build workflow status: `{manifest['build_status']}`.\n"
+              "Each installer is listed with a SHA-256 digest in `manifest.json`.\n"
+          )
+          tag = f"cortendesk-rustdesk-{version}-{platform}-{uuid[:8]}"
+          pathlib.Path("release-tag.txt").write_text(tag + "\n")
+          print(f"Prepared {len(assets)} installer asset(s) for {tag}")
+          PY
+
+      - name: Create the durable GitHub Release
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$(cat release-tag.txt)"
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Release $tag already exists; leaving its assets unchanged."
+            exit 0
+          fi
+          gh release create "$tag" release-assets/* \
+            --repo "$GH_REPO" \
+            --title "CortenDesk RustDesk $RUSTDESK_VERSION ($BUILD_PLATFORM)" \
+            --notes-file release-notes.md \
+            --target "$GH_SHA"

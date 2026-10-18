@@ -1,0 +1,19 @@
+[Unit]
+Description=Build and publish new stable CortenDesk installers
+After=docker.service network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/app/data/stacks/Oracle VPS/rdgen
+LoadCredentialEncrypted=corten-auth:/etc/credstore.encrypted/corten-release-sync-auth
+LoadCredentialEncrypted=rdgen-auth:/etc/credstore.encrypted/corten-release-sync-rdgen
+TimeoutStartSec=8h
+ExecStart=/bin/bash "/app/data/stacks/Oracle VPS/rdgen/rdgen-auth/ops/corten_release_sync/run.sh"
+Nice=10
+IOSchedulingClass=idle
+
+[Install]
+WantedBy=multi-user.target

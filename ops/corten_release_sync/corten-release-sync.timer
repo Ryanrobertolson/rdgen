@@ -1,0 +1,11 @@
+[Unit]
+Description=Check for a new stable RustDesk release once daily
+
+[Timer]
+OnCalendar=*-*-* 10:00:00 UTC
+RandomizedDelaySec=10m
+Persistent=false
+Unit=corten-release-sync.service
+
+[Install]
+WantedBy=timers.target

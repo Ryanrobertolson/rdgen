@@ -69,7 +69,15 @@ def validate_generate_params(data):
     }
     for field, (choices, default) in choice_validations.items():
         value = data.get(field, default)
-        if value not in choices:
+        # Keep the UI's known versions, but let the authenticated API accept
+        # future stable RustDesk tags so unattended release checks don't need
+        # a code change for every upstream release.
+        valid_future_version = (
+            field == 'version'
+            and isinstance(value, str)
+            and re.fullmatch(r'v?\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?', value) is not None
+        )
+        if value not in choices and not valid_future_version:
             errors[field] = f'Invalid choice. Must be one of: {choices}'
         else:
             cleaned[field] = value

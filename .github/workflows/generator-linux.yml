@@ -1558,13 +1558,22 @@ jobs:
       - name: Finalize and Cleanup zip/json
         if: always() # Run even if previous steps fail
         continue-on-error: true
-        uses: fjogeleit/http-request-action@v1
-        with:
-          url: "${{ secrets.GENURL }}/cleanzip"
-          method: 'POST'
-          customHeaders: '{"Content-Type": "application/json", "Authorization": "Bearer ${{ secrets.RDGEN_API_TOKEN }}"}'
-          data: '{"uuid": "${{ env.uuid }}"}'
-
+        env:
+          GENURL: ${{ secrets.GENURL }}
+          RDGEN_API_TOKEN: ${{ secrets.RDGEN_API_TOKEN }}
+          RDGEN_UUID: ${{ env.uuid }}
+        shell: bash
+        run: |
+          response_code=$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' --max-redirs 0 \
+            --request POST \
+            --header "Authorization: Bearer $RDGEN_API_TOKEN" \
+            --header "Content-Type: application/json" \
+            --data "{\"uuid\":\"$RDGEN_UUID\"}" \
+            "$GENURL/cleanzip")
+          if [[ "$response_code" != 2* ]]; then
+            echo "RDGen cleanup returned HTTP $response_code"
+            exit 1
+          fi
       - name: Set rdgen value
         if: ${{ env.rdgen == 'true' }}
         run: |

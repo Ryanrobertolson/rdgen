@@ -377,7 +377,14 @@ def make_uploader(settings: dict, credentials: dict):
             except PlaywrightTimeoutError:
                 if page.locator('input[autocomplete="one-time-code"], input[name*="code"]').count():
                     raise SyncError("CortenDesk requires an interactive verification code for unattended sign-in")
-                raise SyncError("CortenDesk sign-in failed; check the stored login or account security settings")
+                alerts = page.locator("[role=alert], .alert-danger, .invalid-feedback, .text-danger, .error-message").all_inner_texts()
+                detail = "; ".join(text.strip() for text in alerts if text.strip())
+                message = "CortenDesk sign-in failed"
+                if detail:
+                    message += f": {detail[:800]}"
+                else:
+                    message += "; check the stored login or account security settings"
+                raise SyncError(message)
         if "/login" in page.url:
             raise SyncError("CortenDesk still shows the sign-in page after login")
         try:

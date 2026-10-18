@@ -437,29 +437,38 @@ def run_sync(args) -> None:
     pending_for_version = pending.setdefault(version, {})
     base = config["rdgen_url"].rstrip("/")
     assets_dir = pathlib.Path(args.assets)
+    failures: list[str] = []
+
+    def record_failure(platform: str, stage: str, error: Exception | str) -> None:
+        detail = str(error)[:900]
+        message = f"{platform} {stage}: {detail}"
+        failures.append(message)
+        log(f"ERROR: {message}")
 
     # Reconcile a previously started build before launching another request.
     releases_by_platform = {manifest.get("platform"): (release, manifest) for release, manifest in existing}
     for platform in config["platforms"]:
         if platform in releases_by_platform:
             continue
-        build = pending_for_version.get(platform)
-        if build:
-            uuid = build.get("uuid", "")
-            try:
-                status = rdgen_json(base, release_auth["rdgen_api_token"], f"/api/status?uuid={urllib.parse.quote(uuid)}")
-            except SyncError as exc:
-                if "HTTP 404" in str(exc):
-                    pending_for_version.pop(platform, None)
-                    atomic_write_json(state_path, state)
-                    build = None
-                else:
-                    raise
+        try:
+            build = pending_for_version.get(platform)
+            if build:
+                uuid = build.get("uuid", "")
+                try:
+                    status = rdgen_json(base, release_auth["rdgen_api_token"], f"/api/status?uuid={urllib.parse.quote(uuid)}")
+                except SyncError as exc:
+                    if "HTTP 404" in str(exc):
+                        pending_for_version.pop(platform, None)
+                        atomic_write_json(state_path, state)
+                        build = None
+                    else:
+                        raise
             if build:
                 status_text = str(status.get("status", "unknown"))
                 if not status_is_terminal(status_text):
                     log(f"Resuming existing {platform} build {uuid}")
                     status = wait_for_build(base, release_auth["rdgen_api_token"], uuid)
+                    status_text = str(status.get("status", "unknown"))
                 files = status.get("files") or []
                 if files:
                     tag = f"cortendesk-rustdesk-{version}-{platform}-{uuid[:8]}"
@@ -471,30 +480,34 @@ def run_sync(args) -> None:
                     atomic_write_json(state_path, state)
                     continue
                 if status_is_terminal(status_text):
-                    log(f"RDGen {platform} build {uuid} ended without installer files; it will be retried")
+                    detail = f"RDGen build {uuid} ended as {status_text} without installer files"
                     pending_for_version.pop(platform, None)
                     atomic_write_json(state_path, state)
-                    build = None
-        if platform in releases_by_platform:
-            continue
-        log(f"Requesting {platform} installer build for RustDesk {version}")
-        uuid = start_build(config, version, platform, credentials.get("permanent_password", ""), assets_dir,
-                           release_auth["rdgen_api_token"])
-        pending_for_version[platform] = {"uuid": uuid, "started_at": datetime.now(timezone.utc).isoformat()}
-        atomic_write_json(state_path, state)
-        status = wait_for_build(base, release_auth["rdgen_api_token"], uuid)
-        files = status.get("files") or []
-        if not files:
+                    record_failure(platform, "build", detail)
+                    continue
+            else:
+                log(f"Requesting {platform} installer build for RustDesk {version}")
+                uuid = start_build(config, version, platform, credentials.get("permanent_password", ""), assets_dir,
+                                   release_auth["rdgen_api_token"])
+                pending_for_version[platform] = {"uuid": uuid, "started_at": datetime.now(timezone.utc).isoformat()}
+                atomic_write_json(state_path, state)
+                status = wait_for_build(base, release_auth["rdgen_api_token"], uuid)
+                files = status.get("files") or []
+                if not files:
+                    pending_for_version.pop(platform, None)
+                    atomic_write_json(state_path, state)
+                    record_failure(platform, "build", f"RDGen ended as {status.get('status', 'unknown')} with no installer files")
+                    continue
+            tag = f"cortendesk-rustdesk-{version}-{platform}-{uuid[:8]}"
+            log(f"Publishing {len(files)} output file(s) from the {platform} build to GitHub Release {tag}")
+            trigger_release_workflow(version, platform, uuid, release_auth["github_token"], config.get("rdgen_branch", "rdgen-auth"))
+            release = wait_for_release(tag)
+            releases_by_platform[platform] = (release, release_manifest(release) or {})
             pending_for_version.pop(platform, None)
             atomic_write_json(state_path, state)
-            raise SyncError(f"RDGen {platform} build ended as {status.get('status', 'unknown')} with no files")
-        tag = f"cortendesk-rustdesk-{version}-{platform}-{uuid[:8]}"
-        log(f"Publishing {len(files)} output file(s) from the {platform} build to GitHub Release {tag}")
-        trigger_release_workflow(version, platform, uuid, release_auth["github_token"], config.get("rdgen_branch", "rdgen-auth"))
-        release = wait_for_release(tag)
-        releases_by_platform[platform] = (release, release_manifest(release) or {})
-        pending_for_version.pop(platform, None)
-        atomic_write_json(state_path, state)
+        except SyncError as exc:
+            record_failure(platform, "build/release", exc)
+            continue
 
     # Refresh the public release list after any just-published workflows.
     releases = get_repo_releases()
@@ -510,26 +523,31 @@ def run_sync(args) -> None:
                 asset_key = f"{release.get('id')}:{name}:{digest}"
                 if not name or not digest or asset_key in uploaded:
                     continue
-                asset = assets_by_name.get(name)
-                if not asset or not asset.get("browser_download_url"):
-                    raise SyncError(f"GitHub Release {release.get('tag_name')} is missing asset {name}")
-                data = http_bytes(asset["browser_download_url"], timeout=300)
-                actual = hashlib.sha256(data).hexdigest()
-                if actual != digest:
-                    raise SyncError(f"SHA-256 mismatch for {name}: GitHub release manifest does not match the downloaded file")
-                with tempfile.TemporaryDirectory(prefix="corten-release-") as temporary:
-                    file_path = pathlib.Path(temporary) / pathlib.Path(name).name
-                    file_path.write_bytes(data)
-                    log(f"Uploading {name} from GitHub Release {release.get('tag_name')} to CortenDesk")
-                    upload_one(page, config, version, manifest["platform"], item, file_path)
-                uploaded[asset_key] = {
-                    "release_id": release.get("id"),
-                    "filename": name,
-                    "sha256": digest,
-                    "uploaded_at": datetime.now(timezone.utc).isoformat(),
-                }
-                atomic_write_json(state_path, state)
-                log(f"Published {name} on CortenDesk downloads")
+                try:
+                    asset = assets_by_name.get(name)
+                    if not asset or not asset.get("browser_download_url"):
+                        raise SyncError(f"GitHub Release {release.get('tag_name')} is missing asset {name}")
+                    data = http_bytes(asset["browser_download_url"], timeout=300)
+                    actual = hashlib.sha256(data).hexdigest()
+                    if actual != digest:
+                        raise SyncError(f"SHA-256 mismatch for {name}: GitHub release manifest does not match the downloaded file")
+                    with tempfile.TemporaryDirectory(prefix="corten-release-") as temporary:
+                        file_path = pathlib.Path(temporary) / pathlib.Path(name).name
+                        file_path.write_bytes(data)
+                        log(f"Uploading {name} from GitHub Release {release.get('tag_name')} to CortenDesk")
+                        upload_one(page, config, version, manifest["platform"], item, file_path)
+                    uploaded[asset_key] = {
+                        "release_id": release.get("id"),
+                        "filename": name,
+                        "sha256": digest,
+                        "uploaded_at": datetime.now(timezone.utc).isoformat(),
+                    }
+                    atomic_write_json(state_path, state)
+                    log(f"Published {name} on CortenDesk downloads")
+                except (SyncError, PlaywrightTimeoutError, OSError) as exc:
+                    record_failure(str(manifest.get("platform", "unknown")), f"upload {name}", exc)
+    if failures:
+        raise SyncError("Some platform builds or uploads failed; successful outputs were still processed. " + "; ".join(failures)[:2400])
     log(f"Daily sync finished for RustDesk {version}")
 
 

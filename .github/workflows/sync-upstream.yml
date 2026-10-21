@@ -1,0 +1,22 @@
+name: Sync fork with upstream
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Sync the fork default branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        shell: bash
+        run: |
+          branch="$(gh api "repos/${GH_REPO}" --jq '.default_branch')"
+          gh api --method POST "repos/${GH_REPO}/merge-upstream" -f "branch=${branch}"
